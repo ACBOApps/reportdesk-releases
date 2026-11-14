@@ -1,0 +1,31 @@
+# Δημοσίευση έκδοσης: όταν ανέβει branch "upload/vX.Y.Z" με τα κομμάτια του setup
+# και το υπογεγραμμένο reportdesk-update.json, ενώνει το setup, ελέγχει το SHA-256,
+# δημιουργεί το Release και σβήνει το branch.
+name: publish
+on:
+  push:
+    branches: ['upload/**']
+permissions:
+  contents: write
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Ένωση και έλεγχος
+        run: |
+          set -euo pipefail
+          V="${GITHUB_REF_NAME#upload/v}"
+          cat release/ReportDesk-Setup-$V.exe.part* > ReportDesk-Setup-$V.exe
+          WANT=$(cat release/sha256.txt)
+          GOT=$(sha256sum ReportDesk-Setup-$V.exe | cut -d' ' -f1)
+          [ "$WANT" = "$GOT" ] || { echo "SHA-256 mismatch"; exit 1; }
+          echo "V=$V" >> "$GITHUB_ENV"
+      - name: Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh release create "v$V" "ReportDesk-Setup-$V.exe" release/reportdesk-update.json \
+            --repo "$GITHUB_REPOSITORY" --target main --title "ReportDesk $V" --notes-file release/notes.txt --latest
+          git push origin --delete "$GITHUB_REF_NAME"
